@@ -1,0 +1,291 @@
+---
+title: "Hashtag Summer Reading ☀️📚"
+author: "Tori Culler"
+date: "7/7/2021"
+output: ioslides_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(igraph)
+library(rtweet)
+library(tidytext)
+library(tidygraph)
+library(ggraph)
+library(vader)
+
+summer_rdg_2 <- read_csv("data/summer-rdg-tweets.csv")
+
+ties_1 <-  summer_rdg_2 %>%
+  rename(sender = screen_name, # rename scree_name to sender
+         target = mentions_screen_name) %>% # rename to receiver
+  select(sender,
+         target,
+         created_at,
+         text)
+
+ties_2 <- ties_1 %>%
+  unnest_tokens(input = target,
+                output = receiver,
+                to_lower = FALSE) %>%
+  relocate(sender, receiver)
+
+ties <- ties_2 %>%
+  drop_na(receiver)
+
+actors_1 <- ties_2 %>%
+  pivot_longer(cols = sender:receiver, 
+               names_to = "nodes",
+               values_to = "screen_name")
+
+actors <- actors_1 %>%
+  select(screen_name) %>%
+  distinct() %>%
+  drop_na()
+
+actors_1 <- ties_2 %>%
+  pivot_longer(cols = sender:receiver, 
+               names_to = "nodes",
+               values_to = "screen_name")
+
+actors <- actors_1 %>%
+  select(screen_name) %>%
+  distinct() %>%
+  drop_na()
+
+```
+
+## PREPARE
+
+**Context** -- 
+
+This independent analysis builds on the work introduced in our [unit 2](https://github.com/sbkellogg/eci-589/blob/main/unit-2/unit-2-walkthrough.html) walkthrough for ECI 589, in which we explored the  [#COMMONCORE Project](https://www.hashtagcommoncore.com/), replicating an analysis of Tweets tagged with #commoncore to model the network and explore basic sentiment metrics. 
+
+For my independent analysis, I elected to follow a similar process for #summerreading. 
+
+## PREPARE
+
+**Context** -- 
+
+'Summer reading' is a tradition I always look forward to. As a student, it meant a required book (or 2 or 3) to read before the start of a new school year -- something I secretly never minded. And as a kid who frequented the public library, it meant a fun community game with prizes and special events. And now today, as a librarian myself, I enjoy experiencing the #summerreading mayhem from behind the scenes. 
+
+I've also seen #summerreading show up on my Twitter feed quite a bit, and thought it would be a good subject for this analysis. 
+
+## PREPARE
+
+**Research Questions** -- 
+
+The question I want to answer is:
+
+- *>>Who are the key figures tweeting about summer reading? Public libraries, academic libraries, or booksellers?*
+
+My guess is that it would be mostly public libraries, but I also wouldn't be suprised to learn that the hashtag has been taken over by corporate entities that sell books such as Goodreads or Amazon.
+
+## PREPARE
+
+The packages used for analysis include `rtweet` (for working with Twitter data) & `igraph` (for creating network models).
+
+The data set used consists of English language tweets tagged #summerreading gathered on July 6th 2021 for ~a one week period, going back to June 28th. This gave us a total of 2416 tweets to work with!
+
+Retweets were not included and the data was 'flattened' for csv storage. 
+
+## PREPARE
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+# summer_rdg <- search_tweets(q = "#summerreading", n=5000, include_rts = FALSE, lang = "en")
+# 
+# summer_rdg_2 <- rtweet::flatten(summer_rdg)
+# 
+# write_csv(summer_rdg_2, "data/summer-rdg-tweets.csv")
+
+```
+
+## PREPARE
+
+Let's take a look at 10 random tweets from our corpus just to get a glimpse of what we're dealing with. Looks like a real mix of things!
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+sample_n(summer_rdg_2, 10) %>%
+  select(screen_name, text)
+
+```
+
+
+## WRANGLE 
+
+Data in hand, first, we read in the 'edges' (or, in plain English, all that info related to the ties, or relationships between individual tweets/tweeters in the corpus): 
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+# ties_2 <- ties_1 %>%
+#   unnest_tokens(input = target,
+#                 output = receiver,
+#                 to_lower = FALSE) %>%
+#   relocate(sender, receiver)
+# 
+# ties <- ties_2 %>%
+#   drop_na(receiver)
+```
+
+## WRANGLE 
+
+Next, we read in the 'nodes', which contains additional info about the actors/individual accounts represented. 
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+# actors_1 <- ties_2 %>%
+#   pivot_longer(cols = sender:receiver, 
+#                names_to = "nodes",
+#                values_to = "screen_name")
+# 
+# actors <- actors_1 %>%
+#   select(screen_name) %>%
+#   distinct() %>%
+#   drop_na()
+```
+
+## WRANGLE
+
+Next, we'll combine those two things into a complete network.
+
+We can see that we have 2671 nodes (actors) and 1720 edges (ties)
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+network <- tbl_graph(edges = ties, 
+                     nodes = actors)
+
+network
+```
+
+## EXPLORE + ANALYZE
+
+So what does it all mean?
+
+We can also add measures of centrality to our network, including degree:
+
+>>"Degree is the number of ties to and from an ego. In a directed network, in-degree is the number of ties received, whereas out-degree is the number of ties sent."
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+network_1 <- network %>%
+  activate(nodes) %>%
+  mutate(degree = centrality_degree(mode = "all")) %>%
+  mutate(in_degree = centrality_degree(mode = "in")) %>%
+  mutate(out_degree = centrality_degree(mode = "out"))
+
+network_1
+```
+
+## EXPLORE + ANALYZE
+
+And we can also view some simple summary statistics: 
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+node_measures <- network_1 %>% 
+  activate(nodes) %>%
+  data.frame()
+
+summary(node_measures)
+```
+
+
+## EXPLORE + ANALYZE
+
+And we can also make a sociogram to get a visual overview. What an interesting shape! >>
+
+## EXPLORE + ANALYZE 
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggraph(network_1, layout = "fr") + 
+  geom_node_point(aes(size = in_degree, 
+                      alpha = out_degree, 
+                      colour = degree))
+```
+
+## EXPLORE + ANALYZE
+
+Going back to do a basic look at our node measures can help to determine who our ["transmitters", "transceivers", and "transcenders"](https://www.hashtagcommoncore.com/project/methodology) are -- which is the most helpful for my particular research question.
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+view(node_measures)
+```
+
+## EXPLORE + ANALYZE
+
+**transmitters = those who tweet a lot -- have a high out degree**
+
+*top 10 with highest out_degree are:*
+
+- Talvoti  
+- VClinebarton  
+- KnotSimple  
+- DrMBEdmunds  
+- MomsChoiceAward  
+- Jennife83112653  
+- ReadLatinoLit  
+- Jellybooks  
+- SaraFujimura  
+- AlgonquinBooks  
+
+## EXPLORE + ANALYZE
+
+**tranceivers = those who get tweeted @ a lot -- have a high in degree**
+
+*top 10 with highest in_degree are:*
+
+- Etsy  
+- BE_the_Book  
+- goodreads  
+- amazon  
+- BarbaraDelinsky  
+- HolidayHouseBks  
+- PeachtreePub  
+- Scholastic  
+- HarperCollins  
+- LibbyApp  
+
+*and 11th just to get a library in there:*
+
+- NYSLibrary
+
+## EXPLORE + ANALYZE
+
+**transcenders = hose who represent both high out degree and high in degree**
+
+*top 10 with highest degree overall are:*
+
+- Talvoti  
+- Etsy  
+- VClinebarton  
+- KnotSimple  
+- DrMBEdmunds  
+- MomsChoiceAward  
+- Jennife83112653  
+- Jellybooks  
+- ReadLatinoLit  
+- EgmontInstitute  
+
+## Conclusion
+
+Looking at the degree measures and the screen names that show up, it does seem like the conversation on Twitter around #summerreading tends to be coming from/centered around companies/brands, publishers, and corporate entities as opposed to libraries or schools. Accounts like Amazon, Goodreads, and Etsy had prominence, as did the publishers Scholastic and HarperCollins... though I did notice some not-for profit accounts in there -- like the author Barbara Delinsky, an ebook app for libraries known as "Libby", an advocacy org called ReadLatinoLit, and the NYSLibrary was also just shy of sneaking into the top ten list for transceivers.
+
+## Conclusion 
+
+While I'm not surprised that the #summerreading hashtag on Twitter seems to be mostly being used to sell books rather than promote literacy, it goes against my original hypothesis that libraries would be a bigger player in this scene. But, then again, public libraries in particular are probably marketing their programs on sites like Facebook and Instagram where their audiences/communities are more likely to frequent. I now know from experience in my position at an academic library that promotion of any sort of program or event on Twitter is good for maybe reaching faculty, but not necessarily students as they to be more active on other social media sites. 
+
+## Conclusion
+<center>
+![](images/tweeter.gif)
+<center>
+
+## Conclusion
+
+If I were to build on this brief analysis, I would want to do some text mining to see if I could discern what the popular titles are this summer, and/or what other hashtags are commonly used in conjunction with #summerreading. 
+
+
+
+
+
+
+
+

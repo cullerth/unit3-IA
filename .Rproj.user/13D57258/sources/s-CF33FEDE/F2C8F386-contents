@@ -1,0 +1,437 @@
+---
+title: "ECI 589 Unit 3 Independent Analysis"
+author: "Tori Culler"
+date: "7/30/2021"
+output: ioslides_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(readxl)
+library(tidyverse)
+library(igraph)
+library(tidygraph)
+library(ggraph)
+library(statnet)
+
+```
+
+# PURPOSE >> 
+
+  - Goals of this analysis
+  - Background of the data used 
+
+
+## Goals
+
+This network analysis will replicate the methods used in [this walkthrough](https://sbkellogg.github.io/eci-589/unit-3/unit-3-walkthrough-key.html) which itself replicates a network analysis of a longitudinal study that examined school leadership data collected at two school districts over 3 years that was used to answer research questions related to collaboration, efficacy, and trust. 
+
+**This analysis will compare the data from year 1 of that same study to uncover some of the ways in which the network may have changed over time.** 
+
+## Background 
+
+The data is drawn from Daly's Network of School District Leaders: 
+
+>> <font size="2">*"Leadership network data were collected at two school districts over 3 consecutive years. For each consecutive year, school district leaders were invited to complete a survey that collected individual demographic information (e.g., gender, ethnicity, marital status, age, years of experiences), 11 different network relationships (e.g., collaboration, confidential, energy, expertise, support you approach, support
+approach you, work-related issues, input, recognition, best practices, and innovation), efficacy, and trusting relationships. The social network questions asked the participants to assess the frequency of interactions they have with those nominated individuals on a four-point frequency scale ranging from 1 (the least frequent) to 4 (1–2 times a week). The efficacy items were designed based on the Principal Efficacy Scale used in Daly et al. (2011) and Tschannen-Moran and Gareis's (2004) studies. The efficacy scale includes 18 items rated on a 9-point Likert scale ranging from 1 (None at all) to 9 (A great deal).The trust scale contains eight items rated on a 7-point Likert scale ranging from 1 (Strongly disagree) to 7
+(Strongly agree) modified from Tschannen-Moran and Hoy (2003)."* [source](https://studysites.sagepub.com/carolan/study/resources.htm)</font>
+
+## Data 
+
+Specifically, the data sets used for this analysis include:
+
+> <font size="2">[School Leaders Data Chapter 9_d.](https://studysites.sagepub.com/carolan/study/materials/datasets/99472_ds9.xls) This adjacency matrix reports on "confidential help" ties among 43 school leaders in year 3 of a three-year study. This is a directed valued (weighted) network measured on five-point scale ranging from 0 to 4, with higher values indicating more frequent collaborations (1–2 times/week). These data are used throughout Chapter 9.</font>
+
+> <font size="2">S[chool Leaders Data Chapter 9_d.](https://studysites.sagepub.com/carolan/study/materials/datasets/99472_ds10.xls) This adjacency matrix reports on "confidential help" ties among 43 school leaders in year 3 of a three-year study. This is a directed valued (weighted) network measured on five-point scale ranging from 0 to 4, with higher values indicating more frequent collaborations (1–2 times/week). These data are used throughout Chapter 9.</font>
+
+> <font size="2">[School Leaders Data Chapter 9_e.](https://studysites.sagepub.com/carolan/study/materials/datasets/99472_ds11.xlsx) This rectangular matrix consists of four attribute vectors for 43 school leaders. Following the first ID column, the matrix includes an efficacy score, trust score, and indicators for whether one works at the district-level and is male (1 = yes, 0 = no). These attribute variables can be used as covariates in some of the statistical models covered in Chapter 9, including regression and p* models. </font>
+
+# METHODS >>
+
+  - Tools used
+  - Getting our data ready to analyze
+
+## Libraries used
+
+The R packages used for this analysis include... 
+
+`library(readxl)` - to read in le data
+
+`library(tidyverse)` - to tidy le text
+
+`library(igraph)` - to create visualizations
+
+`library(tidygraph)` - to create create visualizations
+
+`library(ggraph)` - to create visualizations
+
+`library(statnet)` - to do some statistical modeling
+
+## Data import 
+
+First, we have to import our data. 
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+## nodes = demographic info
+leader_nodes <- read_excel("data/School Leaders Data Chapter 9_e.xlsx", 
+                    col_types = c("text", "numeric", "numeric", "numeric", "numeric"))
+
+## relationships from year 1
+leader_matrix_1 <- read_excel("data/School Leaders Data Chapter 9_c.xlsx", 
+                              col_names = FALSE)
+
+## relationships from year 3
+leader_matrix_3 <- read_excel("data/School Leaders Data Chapter 9_d.xlsx", 
+                            col_names = FALSE)
+
+
+```
+
+## Dichotomize the matrix
+
+Next, we have to dichotomize the matrix, a phrase which would make a really cool metal band name but here essentially means turning everything into a binary code that indicates the presence or absence of a relationship: 
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+# year 3 
+
+#making things into a matrix r will recognize
+leader_matrix_3 <- leader_matrix_3 %>%
+  as.matrix()
+
+#dichotomize! change 2s to 0s and 3s to 1s
+leader_matrix_3[leader_matrix_3 <= 2] <- 0
+leader_matrix_3[leader_matrix_3 >= 3] <- 1
+
+#rename some things so we can get our edges later
+rownames(leader_matrix_3) <- leader_nodes$ID
+colnames(leader_matrix_3) <- leader_nodes$ID
+```
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+
+# year 1
+
+#making things into a matrix r will recognize
+leader_matrix_1 <- leader_matrix_1 %>%
+  as.matrix()
+
+#dichotomize! change 2s to 0s and 3s to 1s
+leader_matrix_1[leader_matrix_1 <= 2] <- 0
+leader_matrix_1[leader_matrix_1 >= 3] <- 1
+
+#rename some things so we can get our edges in a bit
+rownames(leader_matrix_1) <- leader_nodes$ID
+colnames(leader_matrix_1) <- leader_nodes$ID
+
+```
+
+## \#gotedges?
+
+Next, we have to get our edges (or, in plain English, all that info related to the ties, or relationships between individual leaders represented in the data set):
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# year 3
+
+#convert to igraph object
+adjacency_matrix_3 <- graph.adjacency(leader_matrix_3,
+                                    diag = FALSE)
+
+#convert matrix to standard edge list
+leader_edges_3 <- get.data.frame(adjacency_matrix_3)
+
+
+leader_graph_3 <- tbl_graph(edges = leader_edges_3,
+                          nodes = leader_nodes,
+                          directed = TRUE)
+
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# year 1
+
+#convert to igraph object
+adjacency_matrix_1 <- graph.adjacency(leader_matrix_1,
+                                    diag = FALSE)
+
+
+leader_edges_1 <- get.data.frame(adjacency_matrix_1)
+
+#convert matrix to standard edge list
+leader_graph_1 <- tbl_graph(edges = leader_edges_1,
+                          nodes = leader_nodes,
+                          directed = TRUE)
+leader_graph_1
+
+```
+
+
+# FINDINGS >>
+
+  - A look at degrees
+  - Basic descriptive stats
+  - Statistical modeling 
+
+## In vs. Out Degree & Other Summary Stats
+
+>> *"Recall degree is the number of ties to and from an ego. In a directed network, in-degree is the number of ties received, whereas out-degree is the number of ties sent."*
+
+  - >> So, in this case: how many times a school leader turns to someone else for advice vs. how many times someone turns to them for advice.
+
+We can also calculate our overall summary stats for the efficacy & trust scores here too, which are coming from our rectangular nodes matrix and so will remain constant between the two years being compared. <!-- Higher efficacy scores will indicate... And higher trust scores will indicate... -->
+
+## ...calculating...
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+
+# adding for year 1
+leader_measures_1 <- leader_graph_1 %>%
+  activate(nodes) %>%
+  mutate(in_degree = centrality_degree(mode = "in")) %>%
+  mutate(out_degree = centrality_degree(mode = "out"))
+
+# adding for year 3
+leader_measures_3 <- leader_graph_3 %>%
+  activate(nodes) %>%
+  mutate(in_degree = centrality_degree(mode = "in")) %>%
+  mutate(out_degree = centrality_degree(mode = "out"))
+
+```
+
+## Summary stats yr. 1
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+# viewing the basic summary stats
+node_measures_1 <- leader_measures_1 %>% 
+  activate(nodes) %>%
+  data.frame()
+
+summary(node_measures_1)
+
+```
+
+## Summary stats yr. 3
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+node_measures_3 <- leader_measures_3 %>% 
+  activate(nodes) %>%
+  data.frame()
+
+summary(node_measures_3)
+```
+
+## Visualize the network 
+
+Next, we'll create some network visualizations to help us more easily compare year 1 with year 3. 
+
+<center>
+![](images/network.gif)
+</center>
+
+## Year 1 network
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggraph(leader_measures_1, layout = "kk") + 
+  geom_node_point(aes()) +
+  geom_node_text(aes(label = ID), 
+                 repel=TRUE) +
+  geom_edge_link() + 
+  geom_edge_fan() +
+  theme_graph()
+```
+
+## Year 3 network
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggraph(leader_measures_3, layout = "kk") + 
+  geom_node_point(aes()) +
+  geom_node_text(aes(label = ID), 
+                 repel=TRUE) +
+  geom_edge_link() + 
+  geom_edge_fan() +
+  theme_graph()
+```
+
+## ERGMs
+
+Creating a visualization like that is only part of the picture -- we can go deeper by way of ERGMs:
+
+>> *"Exponential Random Graph Models provide a means to compare whether a network’s observed structural properties occur more frequently than you could expect from chance alone"*
+
+First, we have to load our network data >>
+
+## Loading network data
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+
+# yr 1
+leader_network_1 <- as.network(leader_edges_1,
+                             vertices = leader_nodes)
+
+# yr 3
+leader_network_3 <- as.network(leader_edges_3,
+                             vertices = leader_nodes)
+```
+
+## Estimate the model
+
+Next, we estimate the model, accounting for mutuality. 
+
+<center>
+![](images/mutual.gif)
+</center>
+
+## Estimating Year 1:
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+# yr 1
+summary(leader_network_1 ~ edges + mutual)
+
+set.seed(589)
+
+ergm_mod_1_1 <-ergm(leader_network_1 ~ edges + mutual)
+
+summary(ergm_mod_1_1)
+
+summary(leader_network_1 ~ edges + 
+          mutual +
+          transitive +
+          gwesp(0.25, fixed=T))
+
+
+```
+
+## Estimating Year 3:
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+# yr 3
+summary(leader_network_3 ~ edges + mutual)
+
+set.seed(589)
+
+ergm_mod_1_3 <-ergm(leader_network_3 ~ edges + mutual)
+
+summary(ergm_mod_1_3)
+
+summary(leader_network_3 ~ edges + 
+          mutual +
+          transitive +
+          gwesp(0.25, fixed=T))
+
+ergm_mod_2_3 <-ergm(leader_network_3 ~ edges + 
+                    mutual +
+                    gwesp(0.25, fixed=T))
+summary(ergm_mod_2_3)
+```
+
+## Adding transitivity
+
+Wherein transitivity = the "friend of a friend" phenomenon. Think: triads. 
+
+<center>
+![](images/triad.png)
+</center>
+
+
+## Transitivity yr. 1
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ergm_mod_2_1 <-ergm(leader_network_1 ~ edges + 
+                    mutual +
+                    gwesp(0.25, fixed=T))
+summary(ergm_mod_2_1)
+```
+
+## Transitivity yr. 3
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ergm_mod_2_3 <-ergm(leader_network_3 ~ edges + 
+                    mutual +
+                    gwesp(0.25, fixed=T))
+summary(ergm_mod_2_3)
+```
+
+## Actor level attributes
+
+We saw in the walkthorugh that we can also add in actor level attributes, which can allow us to compare covariates. Put more simply: we can factor in demographic and behavioral variables. 
+
+The following, for example, is what we used to tell us whether those who are Male or have higher efficacy scores are more likely to either send or receive at tie. And the answer here was that while there was a slight indication that male leaders might be more likely to send or receive ties, things like reciprocity and transitivity had more of an impact on the overall network >>
+
+## Year 3 actor level attributes
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ergm_3_3 <- ergm(leader_network_3 ~ edges +
+                 mutual +
+                 gwesp(0.25, fixed=T) +
+                 nodefactor('MALE') +
+                 nodecov('EFFICACY')
+)
+
+
+summary(ergm_3_3)
+```
+
+
+## Year 1 actor level attributes (???)
+
+Attempting to run that very same analysis on the year 1 data, however, leads to the following error >>
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# ergm_3_1 <- ergm(leader_network_1 ~ edges +
+#                  mutual +
+#                  gwesp(0.25, fixed=T) +
+#                  nodefactor('MALE') +
+#                  nodecov('EFFICACY')
+# )
+# 
+# 
+# summary(ergm_3_1)
+```
+<center>
+![](images/error.png)
+</center>
+
+Cursory Google searches have not proved helpful in determinging the cause of this error, but if I had to guess there is some sort of failure to converge here. Perhaps the limited nature of the year 1 data, with its fewer edges, isn't enough for this calculation to go off of? At any rate, there has been enough analysis nonetheless for some fruitful discussion >>
+
+
+# DISCUSSION >>
+
+  - comparing degree
+  - comparing network diagrams
+  - comparing ERGMs
+
+## Comparison -- degree 
+
+In terms of **in-degree vs. out-degree** for year 1 >> year 3:    
+
+  - It looks like on average in year 1 in-degree was 0.5814, compared to 3.326 in year 3.      
+  - And out-degree on average in year 1 was also 0.5814, compared to 3.326 in year 3. 
+  
+Essentially, the leaders represented in this dataset went from being connected (on average) to half a person at the beginning of the study, to being connect to at least 3 and a third of a person towards the end. These results are not at all surprising for a longitudinal study, and indicate that the network became more cohesive over time. 
+
+## Comparison -- network diagrams
+
+In looking at the year one vs. year three network diagrams, there are some marked differences. 
+
+Clearly, at the start of the study, there were some confidential exchanges going on -- but not nearly to the degree that they were in year 3. 
+
+## Comparison -- ERGMs
+
+ERGMs help us to determine whether or not the observed network has occurred by happenstance or if there is something greater than chance alone at play. 
+
+## Comparison -- ERGMs
+
+Recalling from the year 3 analysis, wherein our edges estimate was -3.12 and our mutuality estimate was also 3.12:   
+
+>> *"the estimates for our edges and mutual terms are statistically significant. The negative estimate for the edge parameter, as noted by Carolan (2014), implies that the probability of a confidential exchange tie in year 3 is relatively low. The reciprocity parameter, on the other hand, is 3.11 in our model, and indicates a strong tendency for confidential-exchange ties to be reciprocated.*
+
+For year 1, too, we see statistically significant estimates, of -4 -- allowing us to draw a similar conclusion for the network as it existed at the beginning of the study. In year 1, though, we can say that the probability of a confidential exchange tie was even lower than in year three, as was reciprocity. Ergo: things improved from year 1 to year 3. 
+
+## Comparison -- ERGMs
+
+We also saw slightly more transitivity in year 1 (1.57) than in year 3 (1.07), which is honestly the opposite of what I would expect given that the network became a lot more cohesive over time (but it was also not a large or significant change). 
+
+## In Summary: 
+
+The changes between year 1 and year 3 were marked. Our degree measures, network diagrams, and ERGMs indicated that the network became more cohesive over time, and actor level attributes did not seem to be playing a significant role. This points to a conclusion that whatever intervention was levied between year 1 and 3 of this study was effective in getting more school leaders to talk to/confide in one another. In the case of attempting to pass new educational policy, this is an achievement and such findings would be worth paying attention to and examining further. 
